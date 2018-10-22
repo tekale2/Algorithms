@@ -27,15 +27,19 @@ class ThreadPool {
         void run_tasks() {
             //std::lock_guard<std::mutex> locker(task_lock);
             while(!destroy) {
+             //   std::cout<<"I am a thread "<<std::this_thread::get_id()<<std::endl;
              std::shared_ptr<Task> task;
              {
                 std::unique_lock<std::mutex> locker(task_lock);
-                while(tasks.empty())
+                while(tasks.empty() && !destroy)
                     cv.wait(locker);
-                task = tasks.back();
-                tasks.pop_back();
+                if(!destroy) {
+                     task = tasks.back();
+                     tasks.pop_back();
+                }
              }
-             task->Run();
+             if(!destroy)
+                task->Run();
             }        
         }
         void add_task(std::shared_ptr<Task> const task) {
@@ -45,6 +49,7 @@ class ThreadPool {
         }
         ~ThreadPool() {
             destroy = true;
+            cv.notify_all();
             for(auto &thread: threads)
                 thread.join();
         }
@@ -58,7 +63,6 @@ class ThreadPool {
         
 };
 
-// synchronize stdout printing
 std::mutex printLock;
 
 class P : public Task {
@@ -82,9 +86,10 @@ int main()
     std::cout<<"Main thread ID "<<std::this_thread::get_id()<<std::endl;
     std::cout<<std::flush;
    }
-   ThreadPool pool(2);
+    ThreadPool pool(2);
     pool.init();
     pool.add_task(std::make_shared<P>(1));
     pool.add_task(std::make_shared<P>(2));
+    std::this_thread::sleep_for(std::chrono::seconds(3));
     return 0;
 }
